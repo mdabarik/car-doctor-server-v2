@@ -16,9 +16,35 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
+// const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {expiresIn: '1h'})
+
+
 // custom middleware
-const logger = async(req, res, next) => {
-    console.log('called', req.host, req.originalUrl);
+const logger = async (req, res, next) => {
+    console.log('called:', req.host, req.originalUrl)
+    next();
+}
+
+const verifyToken = async (req, res, next) => {
+    const token = req.cookies?.token;
+    if (!token) {
+        return res.status(401).send({ message: 'unauthorized access' })
+    }
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+        if (err) {
+            // console.log(err, 'inside verify token err');
+            // return res.status(401).send({ message: 'unauthorized access' })
+            if (err.name === 'TokenExpiredError') {
+                return res.status(401).send({ message: 'Token has expired. Please log in again.' });
+            }
+            console.log(err, 'inside verify token err');
+            return res.status(401).send({ message: 'unauthorized access' });
+        }
+        
+        console.log(req.user, 'inside verifyToken req.user');
+        req.user = decoded;
+        next();
+    })
 }
 
 
@@ -44,7 +70,8 @@ async function run() {
     // require('crypto').randomBytes(64).toString('hex'); to generate token
     app.post('/jwt', logger, async(req, res) => {
         const user = req.body;
-        const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {expiresIn: '1h'})
+        // const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {expiresIn: '1h'});
+        const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {expiresIn: '24h'})
         console.log(user);
         res
         .cookie('token', token, {
@@ -54,9 +81,8 @@ async function run() {
         .send({success: true});
     })
 
-    
     // services related api
-    app.get('/services', logger, async (req, res) => {
+    app.get('/services', logger, async(req, res) => {
         const cursor = serviceCollection.find();
         const result = await cursor.toArray();
         res.send(result);
@@ -79,15 +105,38 @@ async function run() {
         res.send(result);
     })
 
-    app.get('/checkout', logger, async(req, res) => {
-        // console.log(req.query.email);
-        console.log(req.cookies);
+    // app.get('/checkout', verifyToken, async(req, res) => {
+    //     // console.log(req.query.email);
+    //     // console.log(req.cookies);
+    //     // console.log(req.query.email);
+    //     // console.log('ttttt token', req.cookies.token)
+    //     console.log('user in the valid token', req.user)
+    //     if(req.query.email !== req.user.email){
+    //         return res.status(403).send({message: 'forbidden access'})
+    //     }
+
+    //     let query = {};
+    //     if (req.query?.email) {
+    //         query = {email: req.query.email}
+    //     }
+    //     const result = await checkoutCollection.find(query).toArray()
+    //     res.send(result)
+    // })
+
+    app.get('/checkout', logger, verifyToken, async (req, res) => {
+        console.log(req.query.email);
+        // console.log('ttttt token', req.cookies.token)
+        console.log('user in the valid token', req.user)
+        if(req.query.email !== req.user.email){
+            return res.status(403).send({message: 'forbidden access'})
+        }
+
         let query = {};
         if (req.query?.email) {
-            query = {email: req.query.email}
+            query = { email: req.query.email }
         }
-        const result = await checkoutCollection.find(query).toArray()
-        res.send(result)
+        const result = await checkoutCollection.find(query).toArray();
+        res.send(result);
     })
 
     app.patch('/booking/:id', async(req, res) => {
