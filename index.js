@@ -3,9 +3,14 @@ const cors = require('cors');
 const app = express();
 const port = process.env.PORT || 5500;
 require('dotenv').config();
+/**** JSON Web Token ****/
+const jwt = require('jsonwebtoken');
 
 // middleware
-app.use(cors());
+app.use(cors({
+    origin: ['http://localhost:5500', ],
+    credentials: true
+}));
 app.use(express.json());
 
 
@@ -26,6 +31,22 @@ async function run() {
 
     const serviceCollection = client.db('CarDoctor').collection('services');
 
+    // auth related api
+    app.post('/jwt', async(req, res) => {
+        const user = req.body;
+        const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {expiresIn: '1h'})
+        console.log(user);
+        res
+        .cookie('token', token, {
+            httpOnly: true,
+            secure: false,
+            sameSite: 'none'
+        })
+        .send({success: true});
+    })
+
+    
+    // services related api
     app.get('/services', async (req, res) => {
         const cursor = serviceCollection.find();
         const result = await cursor.toArray();
@@ -45,7 +66,6 @@ async function run() {
     const checkoutCollection = client.db('CarDoctor').collection('checkout');
     app.post('/checkout', async (req, res) => {
         const checkout = req.body;
-        console.log(checkout);
         const result = await checkoutCollection.insertOne(checkout);
         res.send(result);
     })
